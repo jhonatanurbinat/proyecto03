@@ -28,6 +28,54 @@
      # PolicyArn: "arn:aws:iam::aws:policy/AmazonSSMManagedEC2InstanceDefaultPolicy"
     #  Roles:
       #  - Ref: EC2SSMRole
+  ECSEnExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: "ecs_execution_role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action: "sts:AssumeRole"
+            Effect: "Allow"
+            Principal:
+              Service: "ecs-tasks.amazonaws.com"
+  
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"  
+#                                               AmazonEC2ContainerServiceRole AmazonECSTaskExecutionRolePolicy
+
+  ECSTaskRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: "ecs_task_role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action: "sts:AssumeRole"
+            Effect: "Allow"
+            Principal:
+              Service: "ecs-tasks.amazonaws.com"
+  ECSEnExecutionRoleECSPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: "ECSEnExecutionRole_ecs_policy"
+      Roles:
+        - Ref: ECSTaskRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - "ec2:*"
+              - "ecs:*"
+              - "ecr:*"
+              - "autoscaling:*"
+              - "elasticloadbalancing:*"
+              - "application-autoscaling:*"
+              - "logs:*"
+              - "tag:*"
+              - "resource-groups:*"
+            Effect: "Allow"
+            Resource: "*"
   EC2InstanceProfile:
     Type: 'AWS::IAM::InstanceProfile'
     Properties:
@@ -191,4 +239,91 @@
           PropagateAtLaunch: 'true'
     Metadata:
       'AWS::CloudFormation::Designer':
-        id: 80731e0b-a9e5-461c-9049-e215aed2ad3d 
+        id: 80731e0b-a9e5-461c-9049-e215aed2ad3d
+## part
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: 'my-load-balancer'
+      Subnets:
+        - !Ref PubSubnetAz1
+        - !Ref PubSubnetAz2
+      SecurityGroups: 
+        - !Ref LoadBalancerSecurityGroup  
+      Tags:
+        - Key: Name
+          Value: !Ref ECSCluster
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref Vpc
+      Port: 80
+      Protocol: HTTP
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPort: 80
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      TargetType: instance
+      Matcher:
+        HttpCode: '200'
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: '80'
+      Protocol: HTTP
+
+  ListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+       - Type: forward
+         TargetGroupArn: !Ref TargetGroup
+      Priority: 1
+      Conditions:
+      - Field: path-pattern
+        Values: 
+          - "/*"
+      ListenerArn: !Ref Listener
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: 'web'
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: bridge
+      RequiresCompatibilities:
+        - EC2
+      ExecutionRoleArn: !Ref ECSEnExecutionRole
+      #TaskRoleArn: !Ref ECSTaskRole
+      ContainerDefinitions:
+        - Name: 'web'
+          Cpu: '128'
+          Memory: '256'
+          Image: 'public.ecr.aws/docker/library/nginx:latest'
+          PortMappings:
+            - HostPort: '80'
+              ContainerPort: '80'
+              Protocol: 'tcp'
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: Listener       # Line Added
+    Properties:
+      ServiceName: 'web'
+      Cluster: !Ref ECSCluster
+      DesiredCount: '1'
+      TaskDefinition: !Ref TaskDefinition
+      LoadBalancers:
+        - TargetGroupArn: !Ref TargetGroup
+          ContainerPort: 80
+          ContainerName: "web"
