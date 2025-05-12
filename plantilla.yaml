@@ -1,0 +1,194 @@
+ Resources:
+  Vpc:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 0e3933ae-23c2-44e1-a0d9-82fcfba93511
+  EC2SSMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: "ec2_ssm_role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action: "sts:AssumeRole"
+            Effect: "Allow"
+            Principal:
+              Service: "ec2.amazonaws.com"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonSSMManagedEC2InstanceDefaultPolicy"  # Attach the managed policy here
+  #SSMPolicyAttachment:
+   # Type: 'AWS::IAM::RolePolicyAttachment'
+   # Properties:
+      #ManagedPolicyName: "AmazonSSMManagedEC2InstanceDefaultPolicy"
+     # PolicyArn: "arn:aws:iam::aws:policy/AmazonSSMManagedEC2InstanceDefaultPolicy"
+    #  Roles:
+      #  - Ref: EC2SSMRole
+  EC2InstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      InstanceProfileName: "EC2InstanceProfile"
+      Roles:
+        - Ref: EC2SSMRole
+  PubSubnetAz1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: 'us-east-1a'
+      MapPublicIpOnLaunch: true
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 6c7ca021-4114-4ec8-acf8-4f103ff7011f
+  PubSubnetAz2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: 'us-east-1b'
+      MapPublicIpOnLaunch: true
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: cfe07e5c-e00f-4918-b877-f567fa08c802
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 46bddd21-3027-4ccb-9e5d-ebf887429453
+  AttachGateway:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 11b7e802-d5ba-437a-8695-4bd5406d4db7
+  RouteViaIgw:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref Vpc
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 1a2f2b53-09d3-4c2c-8286-295870b8c602
+  PublicRouteViaIgw:
+    Type: 'AWS::EC2::Route'
+    DependsOn:
+      - AttachGateway
+    Properties:
+      RouteTableId: !Ref RouteViaIgw
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 4b7c941a-8498-4e70-886b-9339018cc18a
+  PubSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PubSubnetAz1
+      RouteTableId: !Ref RouteViaIgw
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: cea0d60a-6d91-4922-90ea-f6db9f4378a9
+
+
+  PubSubnet2RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PubSubnetAz2
+      RouteTableId: !Ref RouteViaIgw
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: c3b3c8e1-a9c8-47c6-8d26-b6f272bcd9e1
+
+  EcsSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !Ref Vpc
+      GroupDescription: ECS Allowed Ports
+      SecurityGroupIngress:
+        IpProtocol: tcp
+        FromPort: 30
+        ToPort: 150
+        CidrIp: 0.0.0.0/0
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 493fdb30-54ce-4e4e-9cd6-c9faa6e3f93b
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref Vpc
+      GroupDescription: Access to the load balancer that sits in front of ECS
+      SecurityGroupIngress:
+        # Allow access from anywhere to our ECS services
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: -1
+
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: 'my-cluster'
+
+  EcsInstanceLc:
+    # DependsOn
+#    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Type: 'AWS::EC2::LaunchTemplate'
+    Properties:
+      LaunchTemplateName: !Sub ${AWS::StackName}-launch-template
+      LaunchTemplateData:
+        IamInstanceProfile:
+          Arn: !GetAtt
+            - EC2InstanceProfile
+            - Arn
+        ImageId: 'ami-0f88e80871fd81e91'
+        InstanceType: 't2.micro'
+      # AssociatePublicIpAddress: false
+        SecurityGroupIds:
+          - !GetAtt EcsSecurityGroup.GroupId
+        #IamInstanceProfile:
+          #Name: "test_profile"  # Replace with your IAM instance profile name
+        #SecurityGroups:
+          #- !Ref EcsSecurityGroup
+
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 0e8e3b5a-7b14-4ffc-92af-ef9be7e51689
+
+  EcsInstanceAsg:
+    DependsOn:
+      - ECSCluster
+      - EcsInstanceLc  # Added new dependency
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      LaunchTemplate:
+        #LaunchTemplateName: !Ref EcsInstanceLc
+        LaunchTemplateId: !Ref EcsInstanceLc
+        #VersionDescription: "1"
+        Version: !GetAtt EcsInstanceLc.LatestVersionNumber
+      #LaunchTemplateName: !Ref EcsInstanceLc
+      AvailabilityZones:
+        - us-east-1a
+        - us-east-1b
+      MinSize: '1'
+      MaxSize: '1'
+      DesiredCapacity: '1'
+      VPCZoneIdentifier: 
+        - !Ref PubSubnetAz1
+        - !Ref PubSubnetAz2
+      Tags:
+        - Key: Name
+          Value: !Sub 'ECS Instance stack'
+          PropagateAtLaunch: 'true'
+        - Key: Description
+          Value: >-
+            This instance is the part of the Auto Scaling group which was
+            created through ECS Console
+          PropagateAtLaunch: 'true'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 80731e0b-a9e5-461c-9049-e215aed2ad3d 

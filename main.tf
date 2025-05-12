@@ -6,8 +6,6 @@ provider "aws" {
 }
 
 
-
-
 resource "aws_ecs_cluster" "my_cluster" {
   name = "my-cluster"
 }
@@ -111,6 +109,7 @@ resource "aws_ecs_service" "my_service" {
   }
 
   depends_on = [
+    aws_lb_target_group.my_target_group,
     aws_lb_listener.my_listener
   ]
 
@@ -121,6 +120,7 @@ resource "aws_instance" "ecs_instance" {
   ami           = "ami-0f88e80871fd81e91"  # Replace with your ECS-optimized AMI ID
   instance_type = "t2.micro"
   
+  iam_instance_profile = aws_iam_instance_profile.test_profile_2.name
 
   security_groups = [aws_security_group.ecs_sg.name]
 
@@ -142,7 +142,7 @@ resource "aws_lb" "my_alb" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.ecs_sg.id]
-  subnets            = ["subnet-03ec181f1ae0fcdfd"]  # Replace with your subnet IDs
+  subnets            = ["subnet-03ec181f1ae0fcdfd","subnet-0d1283b7c81041b04"]  # Replace with your subnet IDs
   enable_deletion_protection = false
 
   enable_cross_zone_load_balancing = true
@@ -158,6 +158,9 @@ resource "aws_lb_target_group" "my_target_group" {
   port     = 80
   protocol = "HTTP"
   vpc_id   = "vpc-0b5a0b67b5bd9332b"  # Replace with your VPC ID
+
+  target_type = "ip"
+
 
   health_check {
     path                = "/"
@@ -180,10 +183,40 @@ resource "aws_lb_listener" "my_listener" {
 
   default_action {
     type             = "fixed-response"
+    target_group_arn = aws_lb_target_group.my_target_group.arn
     fixed_response {
       status_code = 200
       content_type = "text/plain"
       message_body = "OK"
     }
   }
+}
+
+
+
+resource "aws_iam_role" "example" {
+  name               = "ec2_ssm_role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Action = "sts:AssumeRole",
+        Effect = "Allow",
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ssm_attach" {
+  role       = aws_iam_role.example.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedEC2InstanceDefaultPolicy"
+}
+
+
+resource "aws_iam_instance_profile" "test_profile_2" {
+  name = "test_profile_2"
+  role = aws_iam_role.example.name
 }
