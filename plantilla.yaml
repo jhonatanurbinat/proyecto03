@@ -23,6 +23,7 @@
         - "arn:aws:iam::aws:policy/AmazonSSMManagedEC2InstanceDefaultPolicy"  # Attach the managed policy here
         - "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
         - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        - "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
   #SSMPolicyAttachment:
    # Type: 'AWS::IAM::RolePolicyAttachment'
    # Properties:
@@ -44,6 +45,7 @@
   
       ManagedPolicyArns:
         - "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"  
+        - "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
 #                                               AmazonEC2ContainerServiceRole AmazonECSTaskExecutionRolePolicy
 
   ECSTaskRole:
@@ -76,6 +78,7 @@
               - "logs:*"
               - "tag:*"
               - "resource-groups:*"
+              - "logs:*"
             Effect: "Allow"
             Resource: "*"
   EC2InstanceProfile:
@@ -328,12 +331,18 @@
           - "/*"
       ListenerArn: !Ref Listener
 
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/web
+      RetentionInDays: 7  # Optional: keep logs for 7 days
+
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
       Family: 'web'
-      Cpu: '768'
-      Memory: '1024'
+      Cpu: '256'
+      Memory: '512'
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - EC2
@@ -341,13 +350,21 @@
       #TaskRoleArn: !Ref ECSTaskRole
       ContainerDefinitions:
         - Name: 'web'
-          Cpu: '512'
-          Memory: '768'
+          Cpu: '256'
+          Memory: '512'
           Image: 'public.ecr.aws/docker/library/nginx:latest'
           PortMappings:
             - HostPort: '80'
               ContainerPort: '80'
               Protocol: 'tcp'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              mode: non-blocking
+              max-buffer-size: 25m
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: nginx
 
   Service:
     Type: AWS::ECS::Service
