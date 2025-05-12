@@ -21,6 +21,8 @@
               Service: "ec2.amazonaws.com"
       ManagedPolicyArns:
         - "arn:aws:iam::aws:policy/AmazonSSMManagedEC2InstanceDefaultPolicy"  # Attach the managed policy here
+        - "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+        - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
   #SSMPolicyAttachment:
    # Type: 'AWS::IAM::RolePolicyAttachment'
    # Properties:
@@ -102,6 +104,26 @@
     Metadata:
       'AWS::CloudFormation::Designer':
         id: cfe07e5c-e00f-4918-b877-f567fa08c802
+  PrivSubnetAz1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: 'us-east-1a'
+      MapPublicIpOnLaunch: true
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 6c7ca021-4114-4ec8-acf8-4f103ff7011f
+  PrivSubnetAz2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.4.0/24
+      AvailabilityZone: 'us-east-1b'
+      MapPublicIpOnLaunch: true
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 6c7ca021-4114-4ec8-acf8-4f103ff7011f
   InternetGateway:
     Type: 'AWS::EC2::InternetGateway'
     Metadata:
@@ -193,11 +215,20 @@
           Arn: !GetAtt
             - EC2InstanceProfile
             - Arn
-        ImageId: 'ami-0f88e80871fd81e91'
+        ImageId: 'ami-05712a2b73d4ebafb'
         InstanceType: 't2.micro'
       # AssociatePublicIpAddress: false
         SecurityGroupIds:
           - !GetAtt EcsSecurityGroup.GroupId
+        UserData:
+          Fn::Base64: !Sub |
+           #!/bin/bash -xe
+            echo ECS_CLUSTER=${ECSCluster} >> /etc/ecs/ecs.config
+            yum install -y aws-cfn-bootstrap
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource EcsInstanceLc --configsets full_install --region ${AWS::Region} &
+         # Disable IMDSv1, and require IMDSv2
+        MetadataOptions:
+          HttpEndpoint: enabled
         #IamInstanceProfile:
           #Name: "test_profile"  # Replace with your IAM instance profile name
         #SecurityGroups:
@@ -267,7 +298,7 @@
       HealthCheckProtocol: HTTP
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 3
-      TargetType: instance
+      TargetType: ip
       Matcher:
         HttpCode: '200'
 
@@ -276,7 +307,10 @@
     Properties:
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !Ref TargetGroup
+          ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref TargetGroup
+                Weight: 100
       LoadBalancerArn: !Ref LoadBalancer
       Port: '80'
       Protocol: HTTP
@@ -298,17 +332,17 @@
     Type: AWS::ECS::TaskDefinition
     Properties:
       Family: 'web'
-      Cpu: '256'
-      Memory: '512'
-      NetworkMode: bridge
+      Cpu: '768'
+      Memory: '1024'
+      NetworkMode: awsvpc
       RequiresCompatibilities:
         - EC2
       ExecutionRoleArn: !Ref ECSEnExecutionRole
       #TaskRoleArn: !Ref ECSTaskRole
       ContainerDefinitions:
         - Name: 'web'
-          Cpu: '128'
-          Memory: '256'
+          Cpu: '512'
+          Memory: '768'
           Image: 'public.ecr.aws/docker/library/nginx:latest'
           PortMappings:
             - HostPort: '80'
@@ -317,13 +351,37 @@
 
   Service:
     Type: AWS::ECS::Service
-    DependsOn: Listener       # Line Added
+    DependsOn: 
+      - Listener       # Line Added
+      - PrivSubnetAz1
+      - PrivSubnetAz2
     Properties:
       ServiceName: 'web'
       Cluster: !Ref ECSCluster
       DesiredCount: '1'
       TaskDefinition: !Ref TaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref ServiceSecurityGroup
+          Subnets: 
+            - !Ref PrivSubnetAz1
+            - !Ref PrivSubnetAz2
       LoadBalancers:
         - TargetGroupArn: !Ref TargetGroup
           ContainerPort: 80
           ContainerName: "web"
+
+  ServiceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Security group for service
+      VpcId: !Ref Vpc
+
+  ServiceIngressfromLoadBalancer:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      Description: Ingress from the public ALB
+      GroupId: !Ref ServiceSecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
