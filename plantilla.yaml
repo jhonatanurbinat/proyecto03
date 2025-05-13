@@ -319,7 +319,7 @@
       Protocol: HTTP
       HealthCheckIntervalSeconds: 10
       HealthCheckPort: 3081
-      HealthCheckPath: /retoibm/sumar/10/20
+      HealthCheckPath: /reto/sumar/10/20
       HealthCheckProtocol: HTTP
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 3
