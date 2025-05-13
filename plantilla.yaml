@@ -185,7 +185,7 @@
       SecurityGroupIngress:
         IpProtocol: tcp
         FromPort: 30
-        ToPort: 150
+        ToPort: 5000 #150
         CidrIp: 0.0.0.0/0
     Metadata:
       'AWS::CloudFormation::Designer':
@@ -319,10 +319,10 @@
       Protocol: HTTP
       HealthCheckIntervalSeconds: 10
       HealthCheckPort: 3081
-      HealthCheckPath: /reto/sumar/10/20
+      HealthCheckPath: /reto/health
       HealthCheckProtocol: HTTP
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 3
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 5
       TargetType: ip
       Matcher:
         HttpCode: '200'
