@@ -241,7 +241,7 @@
             - EC2InstanceProfile
             - Arn
         ImageId: 'ami-05712a2b73d4ebafb'
-        InstanceType: 't2.micro'
+        InstanceType: 't2.medium'
       # AssociatePublicIpAddress: false
         SecurityGroupIds:
           - !GetAtt EcsSecurityGroup.GroupId
@@ -279,7 +279,7 @@
         - us-east-1a
         - us-east-1b
       MinSize: '1'
-      MaxSize: '1'
+      MaxSize: '2'
       DesiredCapacity: '1'
       VPCZoneIdentifier: 
         - !Ref PubSubnetAz1
@@ -363,8 +363,8 @@
     Type: AWS::ECS::TaskDefinition
     Properties:
       Family: 'web'
-      Cpu: '256'
-      Memory: '512'
+      Cpu: '128'
+      Memory: '256'
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - EC2
@@ -372,8 +372,8 @@
       #TaskRoleArn: !Ref ECSTaskRole
       ContainerDefinitions:
         - Name: 'web'
-          Cpu: '256'
-          Memory: '512'
+          Cpu: '128'
+          Memory: '256'
           Image: 'jhonatanurbinat/reto:latest'
           PortMappings:
             - HostPort: '3081'
