@@ -317,15 +317,16 @@
       VpcId: !Ref Vpc
       Port: 3081
       Protocol: HTTP
-      HealthCheckIntervalSeconds: 10
-      HealthCheckPort: 3081
-      HealthCheckPath: /reto/health
-      HealthCheckProtocol: HTTP
-      HealthCheckTimeoutSeconds: 10
-      HealthyThresholdCount: 5
+      HealthCheckEnabled: false
+      #HealthCheckIntervalSeconds: 10
+      #HealthCheckPort: 3081
+      #HealthCheckPath: /reto/health
+      #HealthCheckProtocol: HTTP
+      #HealthCheckTimeoutSeconds: 9
+      #HealthyThresholdCount: 5
       TargetType: ip
-      Matcher:
-        HttpCode: '200'
+      #Matcher:
+      #  HttpCode: '200'
 
   Listener:
     Type: AWS::ElasticLoadBalancingV2::Listener
