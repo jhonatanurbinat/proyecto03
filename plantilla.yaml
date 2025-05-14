@@ -315,18 +315,20 @@
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       VpcId: !Ref Vpc
-      Port: 3081
+      Port: 80
       Protocol: HTTP
-      HealthCheckEnabled: false
-      #HealthCheckIntervalSeconds: 10
-      #HealthCheckPort: 3081
-      #HealthCheckPath: /reto/health
-      #HealthCheckProtocol: HTTP
-      #HealthCheckTimeoutSeconds: 9
-      #HealthyThresholdCount: 5
+      #HealthCheckEnabled: false
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPort: 80
+      HealthCheckPath: /healthz
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 9
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 3 
       TargetType: ip
-      #Matcher:
-      #  HttpCode: '200'
+      Matcher:
+        #HttpCode: '200
+        HttpCode: '200,201,204,301,302,304,400,401,403,404,405,408'
 
   Listener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -338,7 +340,7 @@
               - TargetGroupArn: !Ref TargetGroup
                 Weight: 100
       LoadBalancerArn: !Ref LoadBalancer
-      Port: '3081'
+      Port: '80'
       Protocol: HTTP
 
   ListenerRule:
@@ -377,8 +379,8 @@
           Memory: '256'
           Image: 'jhonatanurbinat/reto:latest'
           PortMappings:
-            - HostPort: '3081'
-              ContainerPort: '3081'
+            - HostPort: '80'
+              ContainerPort: '80'
               Protocol: 'tcp'
           LogConfiguration:
             LogDriver: awslogs
@@ -409,7 +411,7 @@
             - !Ref PrivSubnetAz2
       LoadBalancers:
         - TargetGroupArn: !Ref TargetGroup
-          ContainerPort: 3081
+          ContainerPort: 80
           ContainerName: "web"
 
   ServiceSecurityGroup:
